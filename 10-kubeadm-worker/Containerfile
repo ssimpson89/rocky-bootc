@@ -41,6 +41,7 @@ RUN containerd config default > /etc/containerd/config.toml \
  && sed -i 's/SystemdCgroup = false/SystemdCgroup = true/' /etc/containerd/config.toml
 
 COPY configs/k8s-modules-load.conf       /usr/lib/modules-load.d/kubernetes.conf
+COPY configs/node-extras.conf            /usr/lib/modules-load.d/node-extras.conf
 COPY configs/k8s-sysctl.conf             /usr/lib/sysctl.d/99-kubernetes.conf
 COPY configs/iscsi-initiatorname.service /usr/lib/systemd/system/iscsi-initiatorname.service
 COPY configs/iscsi-var.tmpfiles          /usr/lib/tmpfiles.d/iscsi.conf
