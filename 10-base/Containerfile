@@ -11,6 +11,9 @@ COPY --from=repos /etc/pki/rpm-gpg/RPM-GPG-KEY-Rocky-10 /etc/pki/rpm-gpg/
 # Without these, mirrorlist URLs break (literal $rltype causes 404).
 COPY --from=repos /etc/dnf/vars/ /etc/dnf/vars/
 
+# Fetch packages from dl.rockylinux.org directly instead of the mirrorlist.
+RUN sed -i 's/^mirrorlist=/#mirrorlist=/; s/^#baseurl=/baseurl=/' /etc/yum.repos.d/rocky*.repo
+
 COPY 10-base/rocky-10.yaml /usr/share/doc/bootc-base-imagectl/manifests/
 
 RUN /usr/libexec/bootc-base-imagectl build-rootfs --reinject \
