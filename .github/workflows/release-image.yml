@@ -25,10 +25,10 @@ jobs:
       matrix:
         include:
           - arch: amd64
-            runner: ubuntu-26.04
+            runner: ubuntu-24.04
             platform: linux/amd64
           - arch: arm64
-            runner: ubuntu-26.04-arm
+            runner: ubuntu-24.04-arm
             platform: linux/arm64
     runs-on: ${{ matrix.runner }}
     permissions:
@@ -63,7 +63,7 @@ jobs:
   # `bootc upgrade` on either architecture pulls the right image from one tag.
   manifest:
     needs: build
-    runs-on: ubuntu-26.04
+    runs-on: ubuntu-24.04
     permissions:
       contents: read
       packages: write
@@ -93,8 +93,8 @@ jobs:
       fail-fast: false
       matrix:
         include:
-          - { arch: amd64, runner: ubuntu-26.04, platform: linux/amd64 }
-          - { arch: arm64, runner: ubuntu-26.04-arm, platform: linux/arm64 }
+          - { arch: amd64, runner: ubuntu-24.04, platform: linux/amd64 }
+          - { arch: arm64, runner: ubuntu-24.04-arm, platform: linux/arm64 }
     runs-on: ${{ matrix.runner }}
     permissions:
       contents: read
@@ -124,7 +124,7 @@ jobs:
 
   kubeadm-manifest:
     needs: kubeadm-build
-    runs-on: ubuntu-26.04
+    runs-on: ubuntu-24.04
     permissions:
       contents: read
       packages: write
