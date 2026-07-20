@@ -38,10 +38,13 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
+      # The Makefile builds and rechunks with `sudo podman`, so the image lives
+      # in root's storage. Log in, tag, and push as root too, or the image is
+      # "not known" to the rootless podman.
       - name: Log in to the container registry
         run: |
           echo "${{ secrets.GITHUB_TOKEN }}" \
-            | podman login "$REGISTRY" -u "${{ github.actor }}" --password-stdin
+            | sudo podman login "$REGISTRY" -u "${{ github.actor }}" --password-stdin
 
       - name: Build and rechunk (${{ matrix.arch }})
         run: |
@@ -53,8 +56,8 @@ jobs:
           # Registry paths must be lowercase; owner/name may contain uppercase.
           IMAGE="${REGISTRY,,}/${IMAGE_NAME,,}"
           TAG="${{ github.event.release.tag_name }}"
-          podman tag rocky-bootc:latest "$IMAGE:$TAG-${{ matrix.arch }}"
-          podman push "$IMAGE:$TAG-${{ matrix.arch }}"
+          sudo podman tag rocky-bootc:latest "$IMAGE:$TAG-${{ matrix.arch }}"
+          sudo podman push "$IMAGE:$TAG-${{ matrix.arch }}"
 
   # Stitch the per-arch images into a single multi-arch manifest list, so that
   # `bootc upgrade` on either architecture pulls the right image from one tag.
