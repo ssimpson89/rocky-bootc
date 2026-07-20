@@ -1,0 +1,8 @@
+# Copy to config.toml and set your SSH key (bootc images have no default login).
+# Used by `make iso` / `make qcow2` (bootc-image-builder reads /config.toml).
+
+[[customizations.user]]
+name = "core"
+groups = ["wheel"]
+key = "ssh-ed25519 AAAA...replace-with-your-public-key... you@host"
+# password = "changeme"   # optional; plaintext or a `openssl passwd -6` hash
