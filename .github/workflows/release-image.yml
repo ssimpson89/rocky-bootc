@@ -36,7 +36,7 @@ jobs:
       packages: write
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
 
       # The Makefile builds and rechunks with `sudo podman`, so the image lives
       # in root's storage. Log in, tag, and push as root too, or the image is
@@ -101,7 +101,7 @@ jobs:
       packages: write
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
 
       - name: Log in to the container registry
         run: |
