@@ -55,14 +55,18 @@ stamp=$(mktemp)
 trap 'rm -f "$stamp"' EXIT
 
 # bib-store/bib-rpmmd persist the osbuild store and DNF cache across builds,
-# which cuts most of the download/compose time on repeat runs.
+# which cuts most of the download/compose time on repeat runs. The store can
+# grow to many GB; set CACHE=0 on disk-constrained hosts (or run
+# `podman volume rm bib-store bib-rpmmd` to reclaim the space).
+CACHE_ARGS=""
+[ "${CACHE:-1}" = "1" ] && CACHE_ARGS="-v bib-store:/store -v bib-rpmmd:/rpmmd"
+
 $PODMAN run --rm --privileged \
     --security-opt label=disable \
     -v "$(pwd)/$OUTPUT:/output" \
     -v "$(pwd)/$CONFIG:/config.toml:ro" \
     -v /var/lib/containers/storage:/var/lib/containers/storage \
-    -v bib-store:/store \
-    -v bib-rpmmd:/rpmmd \
+    $CACHE_ARGS \
     "$BIB" \
     --type "$TYPE" \
     --chown "$(id -u):$(id -g)" \
