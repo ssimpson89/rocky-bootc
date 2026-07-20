@@ -54,11 +54,15 @@ mkdir -p "$OUTPUT"
 stamp=$(mktemp)
 trap 'rm -f "$stamp"' EXIT
 
+# bib-store/bib-rpmmd persist the osbuild store and DNF cache across builds,
+# which cuts most of the download/compose time on repeat runs.
 $PODMAN run --rm --privileged \
     --security-opt label=disable \
     -v "$(pwd)/$OUTPUT:/output" \
     -v "$(pwd)/$CONFIG:/config.toml:ro" \
     -v /var/lib/containers/storage:/var/lib/containers/storage \
+    -v bib-store:/store \
+    -v bib-rpmmd:/rpmmd \
     "$BIB" \
     --type "$TYPE" \
     --chown "$(id -u):$(id -g)" \

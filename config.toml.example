@@ -1,8 +1,29 @@
 # Copy to config.toml and set your SSH key (bootc images have no default login).
 # Used by `make iso` / `make qcow2` (bootc-image-builder reads /config.toml).
+#
+# Pick ONE of the two modes below.
+
+# --- Mode 1: UNATTENDED install (default) --------------------------------
+# WARNING: the generated installer wipes ALL disks it can see (clearpart --all)
+# and installs to the first one, with no prompting. Only boot it on machines
+# whose disks are disposable.
 
 [[customizations.user]]
-name = "core"
+name = "rocky"
 groups = ["wheel"]
 key = "ssh-ed25519 AAAA...replace-with-your-public-key... you@host"
 # password = "changeme"   # optional; plaintext or a `openssl passwd -6` hash
+
+# --- Mode 2: INTERACTIVE install -----------------------------------------
+# Comment out Mode 1 above and uncomment this block. Supplying kickstart
+# contents stops bootc-image-builder from adding its own unattended commands
+# (clearpart/autopart/reboot), so Anaconda prompts for storage and
+# installation choices instead of wiping disks automatically. The user must
+# be created here in the kickstart, since [[customizations.user]] is not
+# applied in this mode.
+#
+# [customizations.installer.kickstart]
+# contents = """
+# user --name=rocky --groups=wheel --lock
+# sshkey --username=rocky "ssh-ed25519 AAAA...replace-with-your-public-key... you@host"
+# """
