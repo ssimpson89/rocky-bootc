@@ -1,0 +1,55 @@
+ARG BASE_IMAGE=ghcr.io/ssimpson89/rocky-bootc:latest
+FROM ${BASE_IMAGE}
+
+# Kubernetes minor version. containerd comes from Docker's repo (Rocky 10 does
+# not ship it); CRI-O stable is not published for v1.33+ on pkgs.k8s.io.
+ARG K8S_MINOR=v1.36
+
+# SELinux permissive, per the kubeadm install docs.
+RUN sed -i 's/^SELINUX=enforcing$/SELINUX=permissive/' /etc/selinux/config
+
+RUN cat > /etc/yum.repos.d/kubernetes.repo <<EOF
+[kubernetes]
+name=Kubernetes
+baseurl=https://pkgs.k8s.io/core:/stable:/${K8S_MINOR}/rpm/
+enabled=1
+gpgcheck=1
+gpgkey=https://pkgs.k8s.io/core:/stable:/${K8S_MINOR}/rpm/repodata/repomd.xml.key
+exclude=kubelet kubeadm kubectl cri-tools kubernetes-cni
+EOF
+
+RUN cat > /etc/yum.repos.d/docker-ce.repo <<'EOF'
+[docker-ce-stable]
+name=Docker CE Stable
+baseurl=https://download.docker.com/linux/centos/$releasever/$basearch/stable
+enabled=1
+gpgcheck=1
+gpgkey=https://download.docker.com/linux/centos/gpg
+EOF
+
+# containerd + kube tools (kube excludes disabled for install) + Longhorn deps.
+RUN dnf -y --disableexcludes=kubernetes install \
+      containerd.io container-selinux \
+      kubelet kubeadm kubectl \
+      iscsi-initiator-utils cryptsetup device-mapper \
+      conntrack-tools socat iproute-tc ethtool \
+ && dnf clean all && rm -rf /var/cache/* /var/log/* /var/lib/dnf /var/lib/iscsi \
+ && rm -f /etc/iscsi/initiatorname.iscsi
+
+# CRI enabled by default; match kubelet's systemd cgroup driver.
+RUN containerd config default > /etc/containerd/config.toml \
+ && sed -i 's/SystemdCgroup = false/SystemdCgroup = true/' /etc/containerd/config.toml
+
+COPY configs/k8s-modules-load.conf       /usr/lib/modules-load.d/kubernetes.conf
+COPY configs/k8s-sysctl.conf             /usr/lib/sysctl.d/99-kubernetes.conf
+COPY configs/iscsi-initiatorname.service /usr/lib/systemd/system/iscsi-initiatorname.service
+COPY configs/iscsi-var.tmpfiles          /usr/lib/tmpfiles.d/iscsi.conf
+
+RUN systemctl enable containerd kubelet iscsid iscsi-initiatorname.service \
+ && systemctl mask bootc-fetch-apply-updates.timer
+
+# kubelet recreates its root dir at start; systemd owns /var/lib/systemd. Drop
+# the empty dirs they leave so /var stays clean for bootc.
+RUN rm -rf /var/lib/kubelet /var/lib/systemd/migrated
+
+RUN bootc container lint --fatal-warnings

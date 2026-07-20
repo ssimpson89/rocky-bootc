@@ -85,6 +85,68 @@ jobs:
             podman manifest rm "$IMAGE:$target"
           done
 
+  # Build the kubeadm node image on top of the just-released base, pinned to the
+  # release tag (not latest), then publish it as its own multi-arch image.
+  kubeadm-build:
+    needs: manifest
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - { arch: amd64, runner: ubuntu-latest, platform: linux/amd64 }
+          - { arch: arm64, runner: ubuntu-24.04-arm, platform: linux/arm64 }
+    runs-on: ${{ matrix.runner }}
+    permissions:
+      contents: read
+      packages: write
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Log in to the container registry
+        run: |
+          echo "${{ secrets.GITHUB_TOKEN }}" \
+            | sudo podman login "$REGISTRY" -u "${{ github.actor }}" --password-stdin
+
+      - name: Build and push kubeadm image (${{ matrix.arch }})
+        run: |
+          OWNER="${{ github.repository_owner }}"
+          BASE="${REGISTRY,,}/${IMAGE_NAME,,}:${{ github.event.release.tag_name }}"
+          IMAGE="${REGISTRY,,}/${OWNER,,}/rocky-kubeadm"
+          TAG="${{ github.event.release.tag_name }}"
+          sudo podman build --pull=always \
+            --platform=${{ matrix.platform }} \
+            --security-opt=label=disable --cap-add=all --device /dev/fuse \
+            --build-arg BASE_IMAGE="$BASE" \
+            -t "$IMAGE:$TAG-${{ matrix.arch }}" \
+            -f 10-kubeadm-worker/Containerfile 10-kubeadm-worker
+          sudo podman push "$IMAGE:$TAG-${{ matrix.arch }}"
+
+  kubeadm-manifest:
+    needs: kubeadm-build
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
+    steps:
+      - name: Log in to the container registry
+        run: |
+          echo "${{ secrets.GITHUB_TOKEN }}" \
+            | podman login "$REGISTRY" -u "${{ github.actor }}" --password-stdin
+
+      - name: Assemble and push multi-arch kubeadm tags
+        run: |
+          OWNER="${{ github.repository_owner }}"
+          IMAGE="${REGISTRY,,}/${OWNER,,}/rocky-kubeadm"
+          TAG="${{ github.event.release.tag_name }}"
+          for target in "$TAG" latest; do
+            podman manifest create "$IMAGE:$target" \
+              "docker://$IMAGE:$TAG-amd64" \
+              "docker://$IMAGE:$TAG-arm64"
+            podman manifest push --all "$IMAGE:$target" "docker://$IMAGE:$target"
+            podman manifest rm "$IMAGE:$target"
+          done
+
   # Mirror the released image into a local/private registry via a self-hosted
   # runner on your LAN. Disabled until you opt in:
   #   1. Register a self-hosted runner (Settings -> Actions -> Runners) with
