@@ -1,46 +1,46 @@
-# Rocky Linux Bootable Container Demo (bootc)
+# Rocky Linux Bootable Container (bootc)
 
-Demo project for building Rocky Linux 9 bootable container images using the [bootc framework](https://containers.github.io/bootc/).
+Builds Rocky Linux 10 bootable container images using the [bootc
+framework](https://containers.github.io/bootc/).
 
-Based on the [CentOS Bootc Base Images](https://gitlab.com/redhat/centos-stream/containers/bootc) tooling and [bootc-base-imagectl](https://gitlab.com/fedora/bootc/base-images/-/blob/main/bootc-base-imagectl.md).
+Based on the [CentOS Bootc Base Images](https://gitlab.com/redhat/centos-stream/containers/bootc)
+tooling and [bootc-base-imagectl](https://gitlab.com/fedora/bootc/base-images/-/blob/main/bootc-base-imagectl.md).
+
+## Images
+
+- **`rocky-bootc`** (`10-base/`) — the Rocky Linux 10 bootc base image.
+- **`rocky-kubeadm`** (`10-kubeadm-worker/`) — a derived Kubernetes node image
+  (kubeadm/kubelet + containerd, Longhorn host deps). See
+  [`10-kubeadm-worker/README.md`](10-kubeadm-worker/README.md), including how to
+  join it to a cluster.
 
 ## Prerequisites
 
 * `make`
-* `podman` (with root/sudo access for nested containerization)
+* `podman` (rootful/sudo for the nested build; override with `PODMAN=podman` for
+  a rootless setup such as a podman machine on macOS)
 * Sufficient disk space and internet connectivity
 
-## Building
-
-### Rocky Linux 9 (x86_64)
+## Building the base image
 
 ```bash
-make \
-  PLATFORM=linux/amd64 \
-  IMAGE_NAME=rocky-bootc \
-  VERSION_MAJOR=9
+make                        # build + rechunk rocky-bootc for linux/amd64
+make PLATFORM=linux/arm64   # build for aarch64
+make image PODMAN=podman    # rootless (e.g. macOS podman machine)
 ```
 
-### Rocky Linux 9 (aarch64)
+### Build variables
 
-```bash
-make \
-  PLATFORM=linux/arm64 \
-  IMAGE_NAME=rocky-bootc \
-  VERSION_MAJOR=9
-```
+* `PLATFORM`: target architecture (`linux/amd64`, `linux/arm64`)
+* `IMAGE_NAME`: output image name (default: `rocky-bootc`)
+* `VERSION_MAJOR`: Rocky major version (default: `10`); selects `<major>-base/`
+* `PODMAN`: podman invocation (default: `sudo podman`)
 
-### Build Variables
+## Building manually (without make)
 
-* `PLATFORM`: Target architecture (e.g., `linux/amd64`, `linux/arm64`)
-* `IMAGE_NAME`: Output container image name (default: `rocky-bootc`)
-* `VERSION_MAJOR`: Rocky Linux major version (default: `9`)
+Two stages: build the image, then rechunk it.
 
-## Building Manually (without Make)
-
-If you prefer to run the steps directly, there are two stages: building the image and rechunking it.
-
-### Step 1: Build the image
+### 1. Build
 
 ```bash
 sudo podman build \
@@ -49,17 +49,19 @@ sudo podman build \
   --cap-add=all \
   --device /dev/fuse \
   -t rocky-bootc \
-  -f 9/Containerfile \
+  -f 10-base/Containerfile \
   .
 ```
 
-The build uses nested containerization (podman-in-podman) because `bootc-base-imagectl` runs `rpm-ostree` inside the container to compose the rootfs. This is why the extra flags are required:
+The build uses nested containerization (podman-in-podman) because
+`bootc-base-imagectl` runs `rpm-ostree` inside the container to compose the
+rootfs, which is why the extra flags are required:
 
-* `--security-opt=label=disable`: Disables SELinux label confinement so the nested container can access the build context.
-* `--cap-add=all`: Grants the full capability set needed for rpm-ostree to create the filesystem layout (mount, chroot, etc.).
-* `--device /dev/fuse`: Provides FUSE device access for ostree/composefs operations.
+* `--security-opt=label=disable`: lets the nested container access the build context.
+* `--cap-add=all`: grants the capabilities rpm-ostree needs (mount, chroot, etc.).
+* `--device /dev/fuse`: provides FUSE access for ostree/composefs.
 
-### Step 2: Rechunk the image
+### 2. Rechunk
 
 ```bash
 sudo podman run \
@@ -74,18 +76,41 @@ sudo podman tag localhost/rechunked-rocky-bootc:latest localhost/rocky-bootc:lat
 sudo podman rmi localhost/rechunked-rocky-bootc:latest
 ```
 
-The rechunk step re-splits the image into roughly 60 content-addressed OCI layers. Without it, the entire OS sits in a single layer from the `COPY --from=builder /target-rootfs/ /` step in the Containerfile.
+Rechunking re-splits the image into roughly 60 content-addressed OCI layers.
+Without it the entire OS sits in a single layer, so any change means
+re-downloading the whole OS on update. Content-addressed layering groups files
+by package, so unchanged RPMs produce the same layer across rebuilds and clients
+pull only what changed.
 
-This matters for updates: when you rebuild after a package update, only the layers containing changed files need to be pulled. With one giant layer, any change means re-downloading the whole OS. Content-addressed layering groups files by package so that unchanged RPMs produce the same layer across rebuilds, making registry distribution and client pulls significantly more efficient.
+## How it works
 
-The rechunk command mounts the host's container storage (`/var/lib/containers`) so it can read the built image and write the rechunked output. The tag and rmi commands then swap the rechunked image into place and clean up the intermediate.
+The base build is a three-stage process:
 
-## How It Works
+1. **repos stage**: extracts Rocky Linux 10 repo configs and GPG keys from the
+   official `quay.io/rockylinux/rockylinux:10` image.
+2. **builder stage**: uses `quay.io/centos-bootc/centos-bootc:stream10` as the
+   build environment and runs `bootc-base-imagectl` with the `rocky-10.yaml`
+   manifest to compose the rootfs.
+3. **final stage**: assembles a minimal bootc image from scratch with the
+   composed rootfs.
 
-The build is a three-stage process:
+`make all` runs the build and the rechunk step.
 
-1. **repos stage**: Extracts Rocky Linux 9 repository configs and GPG keys from the official `quay.io/rockylinux/rockylinux:9` base image
-2. **builder stage**: Uses `quay.io/centos-bootc/centos-bootc:stream10` as the build environment, runs `bootc-base-imagectl` with a Rocky-specific YAML manifest to compose the rootfs
-3. **final stage**: Creates a minimal bootc image from scratch with the composed rootfs
+## Releases
 
-The `make rechunk` step (run by default via `make all`) optimizes the image layer structure for efficient OCI distribution.
+Publishing a GitHub Release triggers `.github/workflows/release-image.yml`,
+which:
+
+1. builds `rocky-bootc` natively for `amd64` and `arm64`, then publishes a
+   multi-arch manifest tagged with the release tag and `latest`;
+2. builds `rocky-kubeadm` on top of that release tag and publishes it as its own
+   multi-arch image.
+
+The release tag doubles as the image version. Registry and image names come from
+Actions variables, so nothing is hardcoded.
+
+## Disk images
+
+These produce OCI container images, which is what `bootc upgrade` consumes. To
+create installable media (qcow2, ISO, AMI, raw), feed a built image to
+[bootc-image-builder](https://github.com/osbuild/bootc-image-builder).
