@@ -22,6 +22,10 @@ key = "ssh-ed25519 AAAA...replace-with-your-public-key... you@host"
 # be created here in the kickstart, since [[customizations.user]] is not
 # applied in this mode.
 #
+# IMPORTANT: in the storage screen, do NOT use "Automatic" (it creates LVM,
+# which fails at the bootloader step of bootc deployments). Choose Custom ->
+# "Standard Partition", with xfs for / and a plain /boot.
+#
 # [customizations.installer.kickstart]
 # contents = """
 # user --name=rocky --groups=wheel --lock
