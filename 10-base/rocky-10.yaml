@@ -10,6 +10,14 @@ variables:
 packages:
   - rocky-repos
 
+exclude-packages:
+  # UKI kernel packages: their %posttrans runs a kernel-install wrapper that
+  # isn't present during rpm-ostree compose, which breaks build-rootfs on
+  # x86_64. Upstream centos-stream excludes these; we carry it here since we
+  # don't include that layer.
+  - kernel-debug-uki-virt
+  - kernel-uki-virt
+
 postprocess:
   - |
     #!/usr/bin/env bash
