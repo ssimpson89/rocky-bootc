@@ -1,7 +1,8 @@
 name: release-image
 
 # Build the Rocky bootc image when a GitHub Release is published, and push it
-# to the container registry. The release tag becomes the image tag.
+# to the container registry as a multi-arch (amd64 + arm64) image. The release
+# tag becomes the image tag.
 on:
   release:
     types: [published]
@@ -15,8 +16,21 @@ env:
   IMAGE_NAME: ${{ github.repository }}
 
 jobs:
+  # Build each architecture natively (no emulation) and push an arch-specific
+  # tag. Native arm64 avoids qemu, which the nested rpm-ostree compose does not
+  # tolerate well.
   build:
-    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - arch: amd64
+            runner: ubuntu-latest
+            platform: linux/amd64
+          - arch: arm64
+            runner: ubuntu-24.04-arm
+            platform: linux/arm64
+    runs-on: ${{ matrix.runner }}
     permissions:
       contents: read
       packages: write
@@ -24,29 +38,49 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
-      # Registry paths must be lowercase; owner/name may contain uppercase.
-      - name: Compute image reference
-        id: image
-        run: echo "ref=${REGISTRY,,}/${IMAGE_NAME,,}" >> "$GITHUB_OUTPUT"
-
       - name: Log in to the container registry
         run: |
           echo "${{ secrets.GITHUB_TOKEN }}" \
             | podman login "$REGISTRY" -u "${{ github.actor }}" --password-stdin
 
-      - name: Build and rechunk
+      - name: Build and rechunk (${{ matrix.arch }})
         run: |
-          make image
-          make rechunk
+          make image   PLATFORM=${{ matrix.platform }}
+          make rechunk PLATFORM=${{ matrix.platform }}
 
-      - name: Tag and push
+      - name: Push arch-specific tag
         run: |
-          IMAGE="${{ steps.image.outputs.ref }}"
+          # Registry paths must be lowercase; owner/name may contain uppercase.
+          IMAGE="${REGISTRY,,}/${IMAGE_NAME,,}"
           TAG="${{ github.event.release.tag_name }}"
-          podman tag rocky-bootc:latest "$IMAGE:$TAG"
-          podman tag rocky-bootc:latest "$IMAGE:latest"
-          podman push "$IMAGE:$TAG"
-          podman push "$IMAGE:latest"
+          podman tag rocky-bootc:latest "$IMAGE:$TAG-${{ matrix.arch }}"
+          podman push "$IMAGE:$TAG-${{ matrix.arch }}"
+
+  # Stitch the per-arch images into a single multi-arch manifest list, so that
+  # `bootc upgrade` on either architecture pulls the right image from one tag.
+  manifest:
+    needs: build
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
+    steps:
+      - name: Log in to the container registry
+        run: |
+          echo "${{ secrets.GITHUB_TOKEN }}" \
+            | podman login "$REGISTRY" -u "${{ github.actor }}" --password-stdin
+
+      - name: Assemble and push multi-arch tags
+        run: |
+          IMAGE="${REGISTRY,,}/${IMAGE_NAME,,}"
+          TAG="${{ github.event.release.tag_name }}"
+          for target in "$TAG" latest; do
+            podman manifest create "$IMAGE:$target" \
+              "docker://$IMAGE:$TAG-amd64" \
+              "docker://$IMAGE:$TAG-arm64"
+            podman manifest push --all "$IMAGE:$target" "docker://$IMAGE:$target"
+            podman manifest rm "$IMAGE:$target"
+          done
 
   # Mirror the released image into a local/private registry via a self-hosted
   # runner on your LAN. Disabled until you opt in:
@@ -77,5 +111,5 @@ jobs:
   #         SRC="${REGISTRY,,}/${IMAGE_NAME,,}"
   #         DEST="${{ vars.LOCAL_REGISTRY }}/${IMAGE_NAME##*/}"
   #         TAG="${{ github.event.release.tag_name }}"
-  #         skopeo copy "docker://$SRC:$TAG" "docker://$DEST:$TAG"
-  #         skopeo copy "docker://$SRC:$TAG" "docker://$DEST:latest"
+  #         skopeo copy --all "docker://$SRC:$TAG" "docker://$DEST:$TAG"
+  #         skopeo copy --all "docker://$SRC:$TAG" "docker://$DEST:latest"
