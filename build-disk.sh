@@ -48,7 +48,7 @@ if [ ! -f "$CONFIG" ]; then
     exit 1
 fi
 
-$PODMAN pull "$IMAGE"
+$PODMAN pull ${TARGET_ARCH:+--arch "$TARGET_ARCH"} "$IMAGE"
 mkdir -p "$OUTPUT"
 
 stamp=$(mktemp)
