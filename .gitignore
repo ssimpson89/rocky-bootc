@@ -1,0 +1,5 @@
+# bootc-image-builder artifacts (ISOs, qcow2, etc.)
+output/
+
+# local media config (contains your SSH key); commit config.toml.example instead
+config.toml

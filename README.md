@@ -118,12 +118,15 @@ make targets:
 
 ```bash
 cp config.toml.example config.toml   # add your SSH key (login user for the installed OS)
-make iso                             # installer ISO for the kubeadm node image
-make qcow2                           # qcow2 for quick VM testing
+make iso                             # installer ISO
+make qcow2                           # VM disk image
+make disk TYPE=vmdk                  # any other bootc-image-builder type
 ```
 
-Both default to `KUBEADM_IMAGE` (override to pin a tag or build the base image
-instead). Output lands in `output/`. To build media for a different
-architecture than the host (e.g. amd64 media on an arm64 machine), add
-`TARGET_ARCH=amd64`; note this runs under emulation, so building on a host of
-the target architecture is faster and more reliable.
+These wrap `./build-disk.sh`, which can also be run directly
+(`./build-disk.sh qcow2 [image]`). All default to `DISK_IMAGE`
+(`rocky-kubeadm:latest`); override it to pin a tag or build base-image media.
+Artifacts land in `output/` and are listed when the build finishes. To build
+for a different architecture than the host, add `TARGET_ARCH=amd64`; that runs
+under emulation, so building on a host of the target architecture is faster and
+more reliable.

@@ -10,7 +10,9 @@ RUN sed -i 's/^SELINUX=enforcing$/SELINUX=permissive/' /etc/selinux/config
 
 RUN printf '[kubernetes]\nname=Kubernetes\nbaseurl=https://pkgs.k8s.io/core:/stable:/%s/rpm/\nenabled=1\ngpgcheck=1\ngpgkey=https://pkgs.k8s.io/core:/stable:/%s/rpm/repodata/repomd.xml.key\nexclude=kubelet kubeadm kubectl cri-tools kubernetes-cni\n' "$K8S_MINOR" "$K8S_MINOR" > /etc/yum.repos.d/kubernetes.repo
 
-RUN printf '[docker-ce-stable]\nname=Docker CE Stable\nbaseurl=https://download.docker.com/linux/centos/$releasever/$basearch/stable\nenabled=1\ngpgcheck=1\ngpgkey=https://download.docker.com/linux/centos/gpg\n' > /etc/yum.repos.d/docker-ce.repo
+# Major version pinned: $releasever resolves to 10.2 under osbuild's depsolver
+# (bootc-image-builder), and Docker's repo only has 10.
+RUN printf '[docker-ce-stable]\nname=Docker CE Stable\nbaseurl=https://download.docker.com/linux/centos/10/$basearch/stable\nenabled=1\ngpgcheck=1\ngpgkey=https://download.docker.com/linux/centos/gpg\n' > /etc/yum.repos.d/docker-ce.repo
 
 # containerd + kube tools (kube excludes disabled for install) + Longhorn deps.
 RUN dnf -y --disableexcludes=kubernetes install \
