@@ -36,6 +36,11 @@ COPY configs/iscsi-var.tmpfiles          /usr/lib/tmpfiles.d/iscsi.conf
 RUN systemctl enable containerd kubelet iscsid iscsi-initiatorname.service \
  && systemctl mask bootc-fetch-apply-updates.timer
 
+# /opt is a read-only ostree dir, but CNI plugins install to /opt/cni/bin.
+# The state overlay makes /opt writable (upperdir in /var) so Calico's
+# install-cni can drop its binaries; without it calico-node fails to start.
+RUN systemctl enable ostree-state-overlay@opt.service
+
 # kubelet recreates its root dir at start; systemd owns /var/lib/systemd. Drop
 # the empty dirs they leave so /var stays clean for bootc.
 RUN rm -rf /var/lib/kubelet /var/lib/systemd/migrated
