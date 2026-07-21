@@ -103,24 +103,28 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v7
 
-      - name: Log in to the container registry
-        run: |
-          echo "${{ secrets.GITHUB_TOKEN }}" \
-            | sudo podman login "$REGISTRY" -u "${{ github.actor }}" --password-stdin
-
+      # The runner's buildah (1.33.7) can't parse Containerfile heredocs, so the
+      # build runs inside quay.io/buildah/stable (current buildah). The derived
+      # build is unprivileged; login/build/push all happen in the container.
       - name: Build and push kubeadm image (${{ matrix.arch }})
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GH_ACTOR: ${{ github.actor }}
         run: |
           OWNER="${{ github.repository_owner }}"
-          BASE="${REGISTRY,,}/${IMAGE_NAME,,}:${{ github.event.release.tag_name }}"
-          IMAGE="${REGISTRY,,}/${OWNER,,}/rocky-kubeadm"
-          TAG="${{ github.event.release.tag_name }}"
-          sudo podman build --pull=always \
-            --platform=${{ matrix.platform }} \
-            --security-opt=label=disable --cap-add=all --device /dev/fuse \
-            --build-arg BASE_IMAGE="$BASE" \
-            -t "$IMAGE:$TAG-${{ matrix.arch }}" \
-            -f 10-kubeadm-worker/Containerfile 10-kubeadm-worker
-          sudo podman push "$IMAGE:$TAG-${{ matrix.arch }}"
+          export REG="${REGISTRY,,}"
+          export BASE="${REGISTRY,,}/${IMAGE_NAME,,}:${{ github.event.release.tag_name }}"
+          export IMAGE="${REGISTRY,,}/${OWNER,,}/rocky-kubeadm"
+          export TAGREF="${{ github.event.release.tag_name }}-${{ matrix.arch }}"
+          sudo -E podman run --rm --privileged --security-opt label=disable --device /dev/fuse \
+            -e REG -e BASE -e IMAGE -e TAGREF -e GH_TOKEN -e GH_ACTOR \
+            -v "$PWD/10-kubeadm-worker":/ctx:ro \
+            quay.io/buildah/stable bash -euo pipefail -c '
+              echo "$GH_TOKEN" | buildah login "$REG" -u "$GH_ACTOR" --password-stdin
+              buildah build --pull=always --build-arg BASE_IMAGE="$BASE" \
+                -t "$IMAGE:$TAGREF" -f /ctx/Containerfile /ctx
+              buildah push "$IMAGE:$TAGREF"
+            '
 
   kubeadm-manifest:
     needs: kubeadm-build
