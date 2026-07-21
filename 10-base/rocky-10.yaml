@@ -9,6 +9,11 @@ variables:
 
 packages:
   - rocky-repos
+  - vim-enhanced
+  - tmux
+  - wget
+  - bind-utils
+  - rsync
 
 exclude-packages:
   # UKI kernel packages: their %posttrans runs a kernel-install wrapper that
