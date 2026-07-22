@@ -39,117 +39,88 @@ jobs:
         uses: actions/checkout@v7
 
       # The Makefile builds and rechunks with `sudo podman`, so the image lives
-      # in root's storage. Log in, tag, and push as root too, or the image is
+      # in root's storage. Log in and push as root too, or the image is
       # "not known" to the rootless podman.
       - name: Log in to the container registry
+        env:
+          REGISTRY_PASSWORD: ${{ secrets.GITHUB_TOKEN }}
+          REGISTRY_USER: ${{ github.actor }}
         run: |
-          echo "${{ secrets.GITHUB_TOKEN }}" \
-            | sudo podman login "$REGISTRY" -u "${{ github.actor }}" --password-stdin
+          printf '%s' "$REGISTRY_PASSWORD" \
+            | sudo podman login "$REGISTRY" -u "$REGISTRY_USER" --password-stdin
 
       - name: Build and rechunk (${{ matrix.arch }})
-        run: |
-          make image   PLATFORM=${{ matrix.platform }}
-          make rechunk PLATFORM=${{ matrix.platform }}
+        env:
+          PLATFORM: ${{ matrix.platform }}
+        run: make rechunk PLATFORM="$PLATFORM"
 
       - name: Push arch-specific tag
+        env:
+          ARCH: ${{ matrix.arch }}
+          RELEASE_TAG: ${{ github.event.release.tag_name }}
         run: |
           # Registry paths must be lowercase; owner/name may contain uppercase.
           IMAGE="${REGISTRY,,}/${IMAGE_NAME,,}"
-          TAG="${{ github.event.release.tag_name }}"
-          sudo podman tag rocky-bootc:latest "$IMAGE:$TAG-${{ matrix.arch }}"
-          sudo podman push "$IMAGE:$TAG-${{ matrix.arch }}"
+          sudo podman push rocky-bootc:latest "$IMAGE:$RELEASE_TAG-$ARCH"
 
   # Stitch the per-arch images into a single multi-arch manifest list, so that
   # `bootc upgrade` on either architecture pulls the right image from one tag.
   manifest:
     needs: build
     runs-on: ubuntu-24.04
+    outputs:
+      base_ref: ${{ steps.publish.outputs.base_ref }}
     permissions:
-      contents: read
       packages: write
     steps:
       - name: Log in to the container registry
+        env:
+          REGISTRY_PASSWORD: ${{ secrets.GITHUB_TOKEN }}
+          REGISTRY_USER: ${{ github.actor }}
         run: |
-          echo "${{ secrets.GITHUB_TOKEN }}" \
-            | podman login "$REGISTRY" -u "${{ github.actor }}" --password-stdin
+          printf '%s' "$REGISTRY_PASSWORD" \
+            | podman login "$REGISTRY" -u "$REGISTRY_USER" --password-stdin
 
       - name: Assemble and push multi-arch tags
+        id: publish
+        env:
+          RELEASE_TAG: ${{ github.event.release.tag_name }}
         run: |
           IMAGE="${REGISTRY,,}/${IMAGE_NAME,,}"
-          TAG="${{ github.event.release.tag_name }}"
-          for target in "$TAG" latest; do
-            podman manifest create "$IMAGE:$target" \
-              "docker://$IMAGE:$TAG-amd64" \
-              "docker://$IMAGE:$TAG-arm64"
-            podman manifest push --all "$IMAGE:$target" "docker://$IMAGE:$target"
-            podman manifest rm "$IMAGE:$target"
-          done
+          podman manifest create base-image \
+            "docker://$IMAGE:$RELEASE_TAG-amd64" \
+            "docker://$IMAGE:$RELEASE_TAG-arm64"
+          podman manifest push --all base-image "docker://$IMAGE:$RELEASE_TAG"
+          podman manifest push --all base-image "docker://$IMAGE:latest"
+          echo "base_ref=$IMAGE:$RELEASE_TAG" >> "$GITHUB_OUTPUT"
 
-  # Build the kubeadm node image on top of the just-released base, pinned to the
-  # release tag (not latest), then publish it as its own multi-arch image.
-  kubeadm-build:
+  # The derived image is a conventional Containerfile build. Docker's reusable
+  # builder runs each architecture natively, publishes both tags, and assembles
+  # the multi-arch manifest without relying on the runner's Podman or Buildah.
+  kubeadm:
     needs: manifest
-    strategy:
-      fail-fast: false
-      matrix:
-        include:
-          - { arch: amd64, runner: ubuntu-24.04, platform: linux/amd64 }
-          - { arch: arm64, runner: ubuntu-24.04-arm, platform: linux/arm64 }
-    runs-on: ${{ matrix.runner }}
     permissions:
       contents: read
       packages: write
-    steps:
-      - name: Checkout
-        uses: actions/checkout@v7
-
-      # The runner's buildah (1.33.7) can't parse Containerfile heredocs, so the
-      # build runs inside quay.io/buildah/stable (current buildah). The derived
-      # build is unprivileged; login/build/push all happen in the container.
-      - name: Build and push kubeadm image (${{ matrix.arch }})
-        env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          GH_ACTOR: ${{ github.actor }}
-        run: |
-          OWNER="${{ github.repository_owner }}"
-          export REG="${REGISTRY,,}"
-          export BASE="${REGISTRY,,}/${IMAGE_NAME,,}:${{ github.event.release.tag_name }}"
-          export IMAGE="${REGISTRY,,}/${OWNER,,}/rocky-kubeadm"
-          export TAGREF="${{ github.event.release.tag_name }}-${{ matrix.arch }}"
-          sudo -E podman run --rm --privileged --security-opt label=disable --device /dev/fuse \
-            -e REG -e BASE -e IMAGE -e TAGREF -e GH_TOKEN -e GH_ACTOR \
-            -v "$PWD/10-kubeadm-worker":/ctx:ro \
-            quay.io/buildah/stable bash -euo pipefail -c '
-              echo "$GH_TOKEN" | buildah login "$REG" -u "$GH_ACTOR" --password-stdin
-              buildah build --pull=always --build-arg BASE_IMAGE="$BASE" \
-                -t "$IMAGE:$TAGREF" -f /ctx/Containerfile /ctx
-              buildah push "$IMAGE:$TAGREF"
-            '
-
-  kubeadm-manifest:
-    needs: kubeadm-build
-    runs-on: ubuntu-24.04
-    permissions:
-      contents: read
-      packages: write
-    steps:
-      - name: Log in to the container registry
-        run: |
-          echo "${{ secrets.GITHUB_TOKEN }}" \
-            | podman login "$REGISTRY" -u "${{ github.actor }}" --password-stdin
-
-      - name: Assemble and push multi-arch kubeadm tags
-        run: |
-          OWNER="${{ github.repository_owner }}"
-          IMAGE="${REGISTRY,,}/${OWNER,,}/rocky-kubeadm"
-          TAG="${{ github.event.release.tag_name }}"
-          for target in "$TAG" latest; do
-            podman manifest create "$IMAGE:$target" \
-              "docker://$IMAGE:$TAG-amd64" \
-              "docker://$IMAGE:$TAG-arm64"
-            podman manifest push --all "$IMAGE:$target" "docker://$IMAGE:$target"
-            podman manifest rm "$IMAGE:$target"
-          done
+      id-token: write
+    uses: docker/github-builder/.github/workflows/build.yml@3415a188caae9a0da7fba83bc06985776e0b1790 # v1.14.0
+    with:
+      output: image
+      push: true
+      context: 10-kubeadm-worker
+      file: Containerfile
+      platforms: linux/amd64,linux/arm64
+      meta-images: ${{ vars.REGISTRY || 'ghcr.io' }}/${{ github.repository_owner }}/rocky-kubeadm
+      meta-tags: |
+        type=raw,value=${{ github.event.release.tag_name }}
+        type=raw,value=latest
+      build-args: |
+        BASE_IMAGE=${{ needs.manifest.outputs.base_ref }}
+    secrets:
+      registry-auths: |
+        - registry: ${{ vars.REGISTRY || 'ghcr.io' }}
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
 
   # Mirror the released image into a local/private registry via a self-hosted
   # runner on your LAN. Disabled until you opt in:
