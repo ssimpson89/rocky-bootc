@@ -126,3 +126,35 @@ jobs:
         - registry: ${{ vars.REGISTRY || 'ghcr.io' }}
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
+
+  # Mirror the released image into a local/private registry via a self-hosted
+  # runner on your LAN. Disabled until you opt in:
+  #   1. Register a self-hosted runner (Settings -> Actions -> Runners) with
+  #      skopeo installed.
+  #   2. Set variable  ENABLE_LOCAL_MIRROR = true
+  #   3. Set variable  LOCAL_REGISTRY      = registry host[:port]
+  #   4. Set secrets   LOCAL_REGISTRY_USER / LOCAL_REGISTRY_PASSWORD
+  #   5. If the local registry uses a private CA / no TLS, adjust the tls flags.
+  # mirror-to-local:
+  #   needs: build
+  #   if: ${{ vars.ENABLE_LOCAL_MIRROR == 'true' }}
+  #   runs-on: self-hosted
+  #   steps:
+  #     - name: Log in to the source registry (ghcr)
+  #       run: |
+  #         echo "${{ secrets.GITHUB_TOKEN }}" \
+  #           | skopeo login "$REGISTRY" -u "${{ github.actor }}" --password-stdin
+
+  #     - name: Log in to the local registry
+  #       run: |
+  #         echo "${{ secrets.LOCAL_REGISTRY_PASSWORD }}" \
+  #           | skopeo login "${{ vars.LOCAL_REGISTRY }}" \
+  #               -u "${{ secrets.LOCAL_REGISTRY_USER }}" --password-stdin
+
+  #     - name: Mirror released image ghcr -> local
+  #       run: |
+  #         SRC="${REGISTRY,,}/${IMAGE_NAME,,}"
+  #         DEST="${{ vars.LOCAL_REGISTRY }}/${IMAGE_NAME##*/}"
+  #         TAG="${{ github.event.release.tag_name }}"
+  #         skopeo copy --all "docker://$SRC:$TAG" "docker://$DEST:$TAG"
+  #         skopeo copy --all "docker://$SRC:$TAG" "docker://$DEST:latest"

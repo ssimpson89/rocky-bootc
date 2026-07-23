@@ -70,6 +70,8 @@ media type="qcow2" image=disk_image arch="":
     fi
 
     mkdir -p "$output"
+    stamp=$(mktemp)
+    trap 'rm -f "$stamp"' EXIT
 
     arch_args=()
     target_args=()
@@ -100,3 +102,16 @@ media type="qcow2" image=disk_image arch="":
         --chown "$(id -u):$(id -g)" \
         "${target_args[@]}" \
         "{{ image }}"
+
+    # Rename artifacts to <image>-<tag>-<arch>-* so builds don't overwrite each other.
+    ref="{{ image }}"; ref="${ref##*/}"
+    name="${ref%%:*}"
+    tag="latest"; [[ "$ref" == *:* ]] && tag="${ref##*:}"
+    a="${arch:-$(uname -m)}"
+    echo "Artifacts:"
+    while IFS= read -r f; do
+        dest="$output/${name}-${tag}-${a}-$(basename "$f")"
+        mv "$f" "$dest"
+        echo "  $dest"
+    done < <(find "$output" -type f -newer "$stamp")
+    find "$output" -mindepth 1 -type d -empty -delete 2>/dev/null || true
