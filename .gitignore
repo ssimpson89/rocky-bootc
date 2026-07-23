@@ -1,5 +1,8 @@
 # bootc-image-builder artifacts (ISOs, qcow2, etc.)
 output/
 
+# Temporary OCI archive produced while chunking the base image.
+out.ociarchive
+
 # local media config (contains your SSH key); commit config.toml.example instead
 config.toml

@@ -38,9 +38,14 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v7
 
-      # The Makefile builds and rechunks with `sudo podman`, so the image lives
-      # in root's storage. Log in and push as root too, or the image is
-      # "not known" to the rootless podman.
+      - name: Install just
+        uses: extractions/setup-just@f8a3cce218d9f83db3a2ecd90e41ac3de6cdfd9b # v3
+        with:
+          just-version: "1.57.0"
+
+      # The Justfile builds with `sudo podman`, so the image lives in root's
+      # storage. Log in and push as root too, or the image is "not known" to
+      # rootless Podman.
       - name: Log in to the container registry
         env:
           REGISTRY_PASSWORD: ${{ secrets.GITHUB_TOKEN }}
@@ -49,10 +54,10 @@ jobs:
           printf '%s' "$REGISTRY_PASSWORD" \
             | sudo podman login "$REGISTRY" -u "$REGISTRY_USER" --password-stdin
 
-      - name: Build and rechunk (${{ matrix.arch }})
+      - name: Build chunked image (${{ matrix.arch }})
         env:
           PLATFORM: ${{ matrix.platform }}
-        run: make rechunk PLATFORM="$PLATFORM"
+        run: just base "$PLATFORM"
 
       - name: Push arch-specific tag
         env:
@@ -121,35 +126,3 @@ jobs:
         - registry: ${{ vars.REGISTRY || 'ghcr.io' }}
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
-
-  # Mirror the released image into a local/private registry via a self-hosted
-  # runner on your LAN. Disabled until you opt in:
-  #   1. Register a self-hosted runner (Settings -> Actions -> Runners) with
-  #      skopeo installed.
-  #   2. Set variable  ENABLE_LOCAL_MIRROR = true
-  #   3. Set variable  LOCAL_REGISTRY      = registry host[:port]
-  #   4. Set secrets   LOCAL_REGISTRY_USER / LOCAL_REGISTRY_PASSWORD
-  #   5. If the local registry uses a private CA / no TLS, adjust the tls flags.
-  # mirror-to-local:
-  #   needs: build
-  #   if: ${{ vars.ENABLE_LOCAL_MIRROR == 'true' }}
-  #   runs-on: self-hosted
-  #   steps:
-  #     - name: Log in to the source registry (ghcr)
-  #       run: |
-  #         echo "${{ secrets.GITHUB_TOKEN }}" \
-  #           | skopeo login "$REGISTRY" -u "${{ github.actor }}" --password-stdin
-
-  #     - name: Log in to the local registry
-  #       run: |
-  #         echo "${{ secrets.LOCAL_REGISTRY_PASSWORD }}" \
-  #           | skopeo login "${{ vars.LOCAL_REGISTRY }}" \
-  #               -u "${{ secrets.LOCAL_REGISTRY_USER }}" --password-stdin
-
-  #     - name: Mirror released image ghcr -> local
-  #       run: |
-  #         SRC="${REGISTRY,,}/${IMAGE_NAME,,}"
-  #         DEST="${{ vars.LOCAL_REGISTRY }}/${IMAGE_NAME##*/}"
-  #         TAG="${{ github.event.release.tag_name }}"
-  #         skopeo copy --all "docker://$SRC:$TAG" "docker://$DEST:$TAG"
-  #         skopeo copy --all "docker://$SRC:$TAG" "docker://$DEST:latest"
