@@ -10,12 +10,12 @@ Built from `rocky-bootc:<release tag>`, not `:latest`, so a given
 ## Build
 
 ```bash
-podman build \
-  --build-arg BASE_IMAGE=ghcr.io/ssimpson89/rocky-bootc:latest \
-  -t rocky-kubeadm:latest \
-  -f 10-kubeadm-worker/Containerfile \
-  10-kubeadm-worker
+just kubeadm
+just kubeadm ghcr.io/ssimpson89/rocky-bootc:latest
 ```
+
+The optional argument selects the base image; without it, the recipe uses the
+locally built `localhost/rocky-bootc:latest`.
 
 `K8S_MINOR` (default `v1.36`) selects the Kubernetes package repo. Update
 Kubernetes by rebuilding the image with a new value, not `dnf update` on a node.

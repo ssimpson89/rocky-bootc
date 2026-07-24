@@ -38,9 +38,14 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v7
 
-      # The Makefile builds and rechunks with `sudo podman`, so the image lives
-      # in root's storage. Log in and push as root too, or the image is
-      # "not known" to the rootless podman.
+      - name: Install just
+        uses: extractions/setup-just@f8a3cce218d9f83db3a2ecd90e41ac3de6cdfd9b # v3
+        with:
+          just-version: "1.57.0"
+
+      # The Justfile builds with `sudo podman`, so the image lives in root's
+      # storage. Log in and push as root too, or the image is "not known" to
+      # rootless Podman.
       - name: Log in to the container registry
         env:
           REGISTRY_PASSWORD: ${{ secrets.GITHUB_TOKEN }}
@@ -49,10 +54,10 @@ jobs:
           printf '%s' "$REGISTRY_PASSWORD" \
             | sudo podman login "$REGISTRY" -u "$REGISTRY_USER" --password-stdin
 
-      - name: Build and rechunk (${{ matrix.arch }})
+      - name: Build chunked image (${{ matrix.arch }})
         env:
           PLATFORM: ${{ matrix.platform }}
-        run: make rechunk PLATFORM="$PLATFORM"
+        run: just base "$PLATFORM"
 
       - name: Push arch-specific tag
         env:

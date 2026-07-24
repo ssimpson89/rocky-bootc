@@ -1,5 +1,5 @@
 # Copy to config.toml and set your SSH key (bootc images have no default login).
-# Used by `make iso` / `make qcow2` (bootc-image-builder reads /config.toml).
+# Used by `just media` (bootc-image-builder reads /config.toml).
 #
 # Pick ONE of the two modes below.
 
