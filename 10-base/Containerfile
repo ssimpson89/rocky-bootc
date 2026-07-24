@@ -43,6 +43,10 @@ FROM ${CHUNKED_IMAGE} AS chunked
 
 FROM ${FINAL}
 
+# Drop the chunker's scratch mountpoint so /run stays empty; otherwise derived
+# images fail `bootc container lint` (nonempty-run-tmp).
+RUN rm -rf /run/src
+
 LABEL containers.bootc 1
 LABEL ostree.bootable 1
 LABEL org.opencontainers.image.vendor "Rocky Enterprise Software Foundation"
