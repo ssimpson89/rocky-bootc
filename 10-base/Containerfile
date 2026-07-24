@@ -30,22 +30,18 @@ COPY --from=builder /target-rootfs/ /
 FROM ${CHUNKAH_IMAGE} AS rechunker
 
 RUN --mount=from=unchunked,src=/,target=/chunkah,ro \
-    --mount=type=bind,target=/run/src,rw \
+    --mount=type=bind,target=/buildscratch,rw \
     chunkah build \
         --rootfs /chunkah \
         --prune /sysroot/ \
         --max-layers 128 \
         --label ostree.commit- \
         --label ostree.final-diffid- \
-        --output oci-archive:/run/src/out.ociarchive
+        --output oci-archive:/buildscratch/out.ociarchive
 
 FROM ${CHUNKED_IMAGE} AS chunked
 
 FROM ${FINAL}
-
-# Drop the chunker's scratch mountpoint so /run stays empty; otherwise derived
-# images fail `bootc container lint` (nonempty-run-tmp).
-RUN rm -rf /run/src
 
 LABEL containers.bootc 1
 LABEL ostree.bootable 1

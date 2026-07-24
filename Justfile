@@ -34,7 +34,7 @@ base platform="linux/amd64":
         --build-arg FINAL=chunked \
         --build-arg "CHUNKED_IMAGE=oci-archive:${archive}" \
         --skip-unused-stages=false \
-        --volume "{{ project_dir }}:/run/src" \
+        --volume "{{ project_dir }}:/buildscratch" \
         --tag "{{ image_name }}" \
         --file "{{ project_dir }}/10-base/Containerfile" \
         "{{ project_dir }}"
