@@ -1,0 +1,153 @@
+name: stratum-image
+
+# Build the private rocky-stratum image: a rocky-bootc base plus a pinned
+# Stratum binary. The two versions move independently:
+#   - a base release (release-image.yml) rebuilds this at the same Stratum
+#     version, which is an OS-only update for nodes;
+#   - running this workflow by hand with a new stratum_version ships a new
+#     upgrade binary, which only takes effect on `stratum upgrade --cluster`.
+#
+# Setup:
+#   ENABLE_STRATUM        - Actions variable, "true" to build at all.
+#   STRATUM_VERSION       - Actions variable, default Stratum release tag.
+#   STRATUM_DEPOT_URL     - Actions variable, the releases base URL, e.g.
+#                           https://<host>/dlv2/stratum-binaries/releases
+#   DEPOT_USERNAME        - secret, Depot download user.
+#   DEPOT_TOKEN           - secret, Depot download password/token.
+#   The rocky-stratum package must be Private, with this repo granted Write
+#   under "Manage Actions access". Do not add an org.opencontainers.image.source
+#   label: it links the package to this public repo.
+on:
+  workflow_call:
+    inputs:
+      base_ref:
+        type: string
+        required: true
+      base_tag:
+        type: string
+        required: true
+  workflow_dispatch:
+    inputs:
+      base_tag:
+        description: rocky-bootc tag to build on
+        default: latest
+      stratum_version:
+        description: Stratum release tag (empty uses vars.STRATUM_VERSION)
+        required: false
+
+env:
+  REGISTRY: ${{ vars.REGISTRY || 'ghcr.io' }}
+
+jobs:
+  build:
+    if: ${{ vars.ENABLE_STRATUM == 'true' }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - arch: amd64
+            runner: ubuntu-24.04
+            platform: linux/amd64
+          - arch: arm64
+            runner: ubuntu-24.04-arm
+            platform: linux/arm64
+    runs-on: ${{ matrix.runner }}
+    permissions:
+      contents: read
+      packages: write
+    outputs:
+      image: ${{ steps.vars.outputs.image }}
+      tag: ${{ steps.vars.outputs.tag }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+
+      - name: Resolve versions
+        id: vars
+        env:
+          BASE_REF: ${{ inputs.base_ref }}
+          BASE_TAG: ${{ inputs.base_tag }}
+          STRATUM_VERSION: ${{ inputs.stratum_version || vars.STRATUM_VERSION }}
+          OWNER: ${{ github.repository_owner }}
+        run: |
+          test -n "$STRATUM_VERSION" || { echo "No Stratum version set" >&2; exit 1; }
+          BASE_IMAGE="${REGISTRY,,}/${OWNER,,}/rocky-bootc"
+          {
+            echo "base=${BASE_REF:-$BASE_IMAGE:$BASE_TAG}"
+            echo "image=${REGISTRY,,}/${OWNER,,}/rocky-stratum"
+            echo "tag=$BASE_TAG-$STRATUM_VERSION"
+            echo "stratum=$STRATUM_VERSION"
+          } >> "$GITHUB_OUTPUT"
+
+      # Kept in RUNNER_TEMP, outside the checkout and build context, and never
+      # uploaded as an artifact.
+      # Credentials go to curl on stdin, never in argv or the URL.
+      - name: Fetch Stratum (${{ matrix.arch }})
+        env:
+          DEPOT_URL: ${{ vars.STRATUM_DEPOT_URL }}
+          DEPOT_USERNAME: ${{ secrets.DEPOT_USERNAME }}
+          DEPOT_TOKEN: ${{ secrets.DEPOT_TOKEN }}
+          STRATUM_VERSION: ${{ steps.vars.outputs.stratum }}
+          ARCH: ${{ matrix.arch }}
+        working-directory: ${{ runner.temp }}
+        run: |
+          base="${DEPOT_URL%/}/$STRATUM_VERSION/stratum-linux-$ARCH"
+          fetch() {
+            printf 'user = "%s:%s"\n' "$DEPOT_USERNAME" "$DEPOT_TOKEN" \
+              | curl -fsSL --config - -o "$2" "$1"
+          }
+          fetch "$base" stratum
+          fetch "$base.sha256" stratum.sha256
+          echo "$(awk '{print $1}' stratum.sha256)  stratum" | sha256sum -c -
+
+      - name: Set up Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Log in to the container registry
+        uses: docker/login-action@v3
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Build and push (${{ matrix.arch }})
+        uses: docker/build-push-action@v6
+        with:
+          context: 10-stratum
+          platforms: ${{ matrix.platform }}
+          build-args: |
+            BASE_IMAGE=${{ steps.vars.outputs.base }}
+            STRATUM_VERSION=${{ steps.vars.outputs.stratum }}
+          secret-files: stratum=${{ runner.temp }}/stratum
+          provenance: false
+          push: true
+          tags: ${{ steps.vars.outputs.image }}:${{ steps.vars.outputs.tag }}-${{ matrix.arch }}
+
+      - name: Remove the binary
+        if: always()
+        run: rm -f "$RUNNER_TEMP/stratum" "$RUNNER_TEMP/stratum.sha256"
+
+  manifest:
+    needs: build
+    runs-on: ubuntu-24.04
+    permissions:
+      packages: write
+    steps:
+      - name: Log in to the container registry
+        env:
+          REGISTRY_PASSWORD: ${{ secrets.GITHUB_TOKEN }}
+          REGISTRY_USER: ${{ github.actor }}
+        run: |
+          printf '%s' "$REGISTRY_PASSWORD" \
+            | podman login "$REGISTRY" -u "$REGISTRY_USER" --password-stdin
+
+      - name: Assemble and push multi-arch tags
+        env:
+          IMAGE: ${{ needs.build.outputs.image }}
+          TAG: ${{ needs.build.outputs.tag }}
+        run: |
+          podman manifest create stratum-image \
+            "docker://$IMAGE:$TAG-amd64" \
+            "docker://$IMAGE:$TAG-arm64"
+          podman manifest push --all stratum-image "docker://$IMAGE:$TAG"
+          podman manifest push --all stratum-image "docker://$IMAGE:latest"

@@ -1,0 +1,28 @@
+ARG BASE_IMAGE=ghcr.io/ssimpson89/rocky-bootc:latest
+FROM ${BASE_IMAGE}
+
+ARG STRATUM_VERSION=dev
+LABEL io.ciq.stratum.version="${STRATUM_VERSION}"
+
+# Stratum ships its own containerd, runc and kubelet; these are only the host
+# tools it checks for. SELinux stays enforcing.
+RUN dnf -y install \
+      container-selinux policycoreutils-python-utils libselinux-utils \
+      iproute-tc iptables-nft bpftool \
+ && dnf clean all && rm -rf /var/cache/* /var/log/* /var/lib/dnf
+
+# The binary is not publicly distributed, so it arrives as a build secret and
+# never sits in the build context. This copy is the "upgrade binary" only:
+# the live one is /usr/local/bin/stratum (in /var), changed solely by
+# `stratum upgrade`. Rebuilding the image never upgrades a running cluster.
+RUN --mount=type=secret,id=stratum,target=/run/secrets/stratum \
+    install -D -m 0755 /run/secrets/stratum /usr/libexec/stratum/stratum
+
+COPY configs/stratum-install.service /usr/lib/systemd/system/stratum-install.service
+
+# local-path-provisioner keeps volumes in /opt/local-path-provisioner; the
+# state overlay makes the read-only /opt writable (upperdir in /var).
+RUN systemctl enable stratum-install.service ostree-state-overlay@opt.service \
+ && systemctl mask bootc-fetch-apply-updates.timer
+
+RUN bootc container lint --fatal-warnings

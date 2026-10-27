@@ -6,3 +6,7 @@ out.ociarchive
 
 # local media config (contains your SSH key); commit config.toml.example instead
 config.toml
+
+# Stratum binary is not publicly distributed: never commit it.
+10-stratum/bin/*
+!10-stratum/bin/.gitkeep

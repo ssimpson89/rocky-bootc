@@ -13,6 +13,9 @@ tooling and [bootc-base-imagectl](https://gitlab.com/fedora/bootc/base-images/-/
   (kubeadm/kubelet + containerd, Longhorn host deps). See
   [`10-kubeadm-worker/README.md`](10-kubeadm-worker/README.md), including how to
   join it to a cluster.
+- **`rocky-stratum`** (`10-stratum/`) — a private Stratum node image. See
+  [`10-stratum/README.md`](10-stratum/README.md) for building, joining, and
+  upgrading the OS and Stratum independently.
 
 ## Prerequisites
 
@@ -37,6 +40,7 @@ just base                    # rocky-bootc, linux/amd64
 just base linux/arm64        # rocky-bootc, linux/arm64
 just kubeadm                 # derived from the local rocky-bootc image
 just kubeadm <base-image>    # derived from a published base image
+just stratum <version>       # needs the binary in 10-stratum/bin/stratum
 ```
 
 Set `IMAGE_NAME` or `KUBEADM_IMAGE` to override the local output names. Run

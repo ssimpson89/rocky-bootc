@@ -127,6 +127,19 @@ jobs:
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
 
+  # Private Stratum image on the new base, at the pinned STRATUM_VERSION.
+  # Skipped unless vars.ENABLE_STRATUM is "true".
+  stratum:
+    needs: manifest
+    permissions:
+      contents: read
+      packages: write
+    uses: ./.github/workflows/stratum-image.yml
+    with:
+      base_ref: ${{ needs.manifest.outputs.base_ref }}
+      base_tag: ${{ github.event.release.tag_name }}
+    secrets: inherit
+
   # Mirror the released image into a local/private registry via a self-hosted
   # runner on your LAN. Disabled until you opt in:
   #   1. Register a self-hosted runner (Settings -> Actions -> Runners) with
