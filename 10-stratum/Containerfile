@@ -16,4 +16,9 @@ RUN systemctl enable ostree-state-overlay@usr-local.service \
       ostree-state-overlay@opt.service \
  && systemctl mask bootc-fetch-apply-updates.timer
 
+# sudo's secure_path drops /usr/local/bin, so `sudo stratum` would not resolve.
+COPY --chmod=0440 configs/stratum-sudoers /etc/sudoers.d/stratum
+
+RUN visudo -cf /etc/sudoers.d/stratum
+
 RUN bootc container lint --fatal-warnings

@@ -14,6 +14,8 @@ worker); the role is chosen at `stratum up`.
   binary at `/usr/local/bin/stratum` (Stratum hardcodes that path).
 - `ostree-state-overlay@opt.service`, because the local-path provisioner keeps
   volumes in `/opt/local-path-provisioner` and `/opt` is otherwise read-only.
+- `/usr/local/bin` added to sudo's `secure_path` (`/etc/sudoers.d/stratum`), so
+  `sudo stratum ...` resolves.
 - `bootc-fetch-apply-updates.timer` masked, so nodes don't reboot out from
   under Kubernetes.
 

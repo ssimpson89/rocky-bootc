@@ -1,0 +1,2 @@
+# Let `sudo stratum ...` find /usr/local/bin/stratum.
+Defaults    secure_path = /usr/local/sbin:/usr/local/bin:/sbin:/bin:/usr/sbin:/usr/bin
