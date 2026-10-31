@@ -10,6 +10,9 @@ worker); the role is chosen at `stratum up`.
 - `container-selinux`, `policycoreutils-python-utils` and `libselinux-utils`,
   so Stratum can label its files with SELinux left enforcing.
 - `iproute-tc`, `iptables-nft` and `bpftool`, which `stratum uninstall` needs.
+- Longhorn (V1) host dependencies: `iscsi-initiator-utils` (`iscsid` enabled,
+  with a unique InitiatorName generated on first boot), `cryptsetup` and
+  `device-mapper`. The NFSv4 client is already in the base.
 - `ostree-state-overlay@usr-local.service`, so `/usr/local` is writable for the
   binary at `/usr/local/bin/stratum` (Stratum hardcodes that path).
 - `ostree-state-overlay@opt.service`, because the local-path provisioner keeps
