@@ -2,17 +2,18 @@ ARG BASE_IMAGE=ghcr.io/ssimpson89/rocky-bootc:latest
 FROM ${BASE_IMAGE}
 
 # Host prerequisites for Stratum. The binary itself is not baked in: install it
-# to /usr/local/bin/stratum (writable on bootc, it lives in /var) and upgrade it
-# with `stratum upgrade`. Stratum ships its own containerd, runc and kubelet.
+# to /usr/local/bin/stratum and upgrade it with `stratum upgrade`. Stratum ships its own containerd, runc and kubelet.
 # SELinux stays enforcing.
 RUN dnf -y install \
       container-selinux policycoreutils-python-utils libselinux-utils \
       iproute-tc iptables-nft bpftool \
  && dnf clean all && rm -rf /var/cache/* /var/log/* /var/lib/dnf
 
-# local-path-provisioner keeps volumes in /opt/local-path-provisioner; the
-# state overlay makes the read-only /opt writable (upperdir in /var).
-RUN systemctl enable ostree-state-overlay@opt.service \
+# State overlays make read-only /usr dirs writable (upperdir in /var, kept
+# across upgrades): /usr/local for the stratum binary, whose path Stratum
+# hardcodes, and /opt for local-path-provisioner's volumes.
+RUN systemctl enable ostree-state-overlay@usr-local.service \
+      ostree-state-overlay@opt.service \
  && systemctl mask bootc-fetch-apply-updates.timer
 
 RUN bootc container lint --fatal-warnings

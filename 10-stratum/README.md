@@ -10,6 +10,8 @@ worker); the role is chosen at `stratum up`.
 - `container-selinux`, `policycoreutils-python-utils` and `libselinux-utils`,
   so Stratum can label its files with SELinux left enforcing.
 - `iproute-tc`, `iptables-nft` and `bpftool`, which `stratum uninstall` needs.
+- `ostree-state-overlay@usr-local.service`, so `/usr/local` is writable for the
+  binary at `/usr/local/bin/stratum` (Stratum hardcodes that path).
 - `ostree-state-overlay@opt.service`, because the local-path provisioner keeps
   volumes in `/opt/local-path-provisioner` and `/opt` is otherwise read-only.
 - `bootc-fetch-apply-updates.timer` masked, so nodes don't reboot out from
@@ -24,9 +26,9 @@ just stratum ghcr.io/ssimpson89/rocky-bootc:latest
 
 ## Install Stratum
 
-On bootc, `/usr/local` lives in `/var`, so it is writable and survives OS
-upgrades. Download the binary for the node's architecture and install it where
-Stratum expects it:
+`/usr/local` is read-only on bootc, so the image mounts a state overlay on it
+(changes are stored in `/var` and survive OS upgrades). Download the binary
+for the node's architecture and install it where Stratum expects it:
 
 ```bash
 sudo install -m 0755 stratum-linux-amd64 /usr/local/bin/stratum
