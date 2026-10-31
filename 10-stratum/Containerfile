@@ -2,17 +2,26 @@ ARG BASE_IMAGE=ghcr.io/ssimpson89/rocky-bootc:latest
 FROM ${BASE_IMAGE}
 
 # Host prerequisites for Stratum. The binary itself is not baked in: install it
-# to /usr/local/bin/stratum and upgrade it with `stratum upgrade`. Stratum ships its own containerd, runc and kubelet.
-# SELinux stays enforcing.
+# to /usr/local/bin/stratum and upgrade it with `stratum upgrade`. Stratum
+# ships its own containerd, runc and kubelet. SELinux stays enforcing.
+# iscsi-initiator-utils, cryptsetup and device-mapper are Longhorn (V1) host
+# dependencies; the NFSv4 client is already in the base.
 RUN dnf -y install \
       container-selinux policycoreutils-python-utils libselinux-utils \
       iproute-tc iptables-nft bpftool \
- && dnf clean all && rm -rf /var/cache/* /var/log/* /var/lib/dnf
+      iscsi-initiator-utils cryptsetup device-mapper \
+ && dnf clean all && rm -rf /var/cache/* /var/log/* /var/lib/dnf /var/lib/iscsi \
+ && rm -f /etc/iscsi/initiatorname.iscsi
+
+# Each node needs a unique iSCSI InitiatorName, generated on first boot.
+COPY configs/iscsi-initiatorname.service /usr/lib/systemd/system/iscsi-initiatorname.service
+COPY configs/iscsi-var.tmpfiles          /usr/lib/tmpfiles.d/iscsi.conf
 
 # State overlays make read-only /usr dirs writable (upperdir in /var, kept
 # across upgrades): /usr/local for the stratum binary, whose path Stratum
 # hardcodes, and /opt for local-path-provisioner's volumes.
-RUN systemctl enable ostree-state-overlay@usr-local.service \
+RUN systemctl enable iscsid iscsi-initiatorname.service \
+      ostree-state-overlay@usr-local.service \
       ostree-state-overlay@opt.service \
  && systemctl mask bootc-fetch-apply-updates.timer
 
