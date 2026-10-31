@@ -49,14 +49,11 @@ kubeadm base=base_ref:
         --file "{{ project_dir }}/10-kubeadm-worker/Containerfile" \
         "{{ project_dir }}/10-kubeadm-worker"
 
-# Build the Stratum image. The binary is passed as a build secret and is never
-# committed; drop it in 10-stratum/bin/ (gitignored) or pass its path.
+# Build the Stratum host image from a local or published base image.
 [group('images')]
-stratum version="dev" binary=(project_dir + "/10-stratum/bin/stratum") base=base_ref:
+stratum base=base_ref:
     {{ podman }} build \
         --build-arg "BASE_IMAGE={{ base }}" \
-        --build-arg "STRATUM_VERSION={{ version }}" \
-        --secret "id=stratum,src={{ binary }}" \
         --tag "{{ stratum_image }}" \
         --file "{{ project_dir }}/10-stratum/Containerfile" \
         "{{ project_dir }}/10-stratum"
