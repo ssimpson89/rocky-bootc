@@ -6,6 +6,7 @@ podman := sudo + (if sudo == "" { "" } else { " " }) + "podman"
 
 image_name := env("IMAGE_NAME", "rocky-bootc")
 kubeadm_image := env("KUBEADM_IMAGE", "rocky-kubeadm")
+stratum_image := env("STRATUM_IMAGE", "rocky-stratum")
 base_ref := env("BASE_REF", "localhost/rocky-bootc:latest")
 
 disk_image := env("DISK_IMAGE", "ghcr.io/ssimpson89/rocky-kubeadm:latest")
@@ -47,6 +48,15 @@ kubeadm base=base_ref:
         --tag "{{ kubeadm_image }}" \
         --file "{{ project_dir }}/10-kubeadm-worker/Containerfile" \
         "{{ project_dir }}/10-kubeadm-worker"
+
+# Build the Stratum host image from a local or published base image.
+[group('images')]
+stratum base=base_ref:
+    {{ podman }} build \
+        --build-arg "BASE_IMAGE={{ base }}" \
+        --tag "{{ stratum_image }}" \
+        --file "{{ project_dir }}/10-stratum/Containerfile" \
+        "{{ project_dir }}/10-stratum"
 
 # Examples:
 #   just media

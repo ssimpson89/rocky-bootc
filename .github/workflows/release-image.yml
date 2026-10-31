@@ -127,6 +127,32 @@ jobs:
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
 
+  # Stratum host image: prerequisites only, no Stratum binary.
+  stratum:
+    needs: manifest
+    permissions:
+      contents: read
+      packages: write
+      id-token: write
+    uses: docker/github-builder/.github/workflows/build.yml@3415a188caae9a0da7fba83bc06985776e0b1790 # v1.14.0
+    with:
+      output: image
+      push: true
+      context: 10-stratum
+      file: Containerfile
+      platforms: linux/amd64,linux/arm64
+      meta-images: ${{ vars.REGISTRY || 'ghcr.io' }}/${{ github.repository_owner }}/rocky-stratum
+      meta-tags: |
+        type=raw,value=${{ github.event.release.tag_name }}
+        type=raw,value=latest
+      build-args: |
+        BASE_IMAGE=${{ needs.manifest.outputs.base_ref }}
+    secrets:
+      registry-auths: |
+        - registry: ${{ vars.REGISTRY || 'ghcr.io' }}
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
   # Mirror the released image into a local/private registry via a self-hosted
   # runner on your LAN. Disabled until you opt in:
   #   1. Register a self-hosted runner (Settings -> Actions -> Runners) with

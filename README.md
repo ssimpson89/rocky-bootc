@@ -13,6 +13,9 @@ tooling and [bootc-base-imagectl](https://gitlab.com/fedora/bootc/base-images/-/
   (kubeadm/kubelet + containerd, Longhorn host deps). See
   [`10-kubeadm-worker/README.md`](10-kubeadm-worker/README.md), including how to
   join it to a cluster.
+- **`rocky-stratum`** (`10-stratum/`) — a Stratum node host image (host
+  prerequisites only; the Stratum binary is installed separately). See
+  [`10-stratum/README.md`](10-stratum/README.md).
 
 ## Prerequisites
 
@@ -37,6 +40,7 @@ just base                    # rocky-bootc, linux/amd64
 just base linux/arm64        # rocky-bootc, linux/arm64
 just kubeadm                 # derived from the local rocky-bootc image
 just kubeadm <base-image>    # derived from a published base image
+just stratum                 # Stratum host image, binary not included
 ```
 
 Set `IMAGE_NAME` or `KUBEADM_IMAGE` to override the local output names. Run
@@ -67,8 +71,8 @@ which:
 
 1. runs the same `just base` recipe natively for `amd64` and `arm64`, then
    publishes a multi-arch manifest tagged with the release tag and `latest`;
-2. builds `rocky-kubeadm` on top of that release tag and publishes it as its own
-   multi-arch image.
+2. builds `rocky-kubeadm` and `rocky-stratum` on top of that release tag and
+   publishes each as its own multi-arch image.
 
 The release tag doubles as the image version. Registry and image names come from
 Actions variables, so nothing is hardcoded.
